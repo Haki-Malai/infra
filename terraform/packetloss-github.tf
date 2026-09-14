@@ -5,6 +5,14 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags           = local.packetloss_tags
 }
 
+data "github_user" "owner" {
+  username = var.github_owner
+}
+
+data "github_repository" "packetloss" {
+  full_name = "${var.github_owner}/${var.packetloss_repository}"
+}
+
 resource "aws_iam_role" "packetloss_deploy" {
   for_each = var.packetloss_stages
   name     = "packetloss-${each.key}-deploy"
@@ -21,7 +29,7 @@ resource "aws_iam_role" "packetloss_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_owner}/${var.packetloss_repository}:environment:${each.key}"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_owner}@${data.github_user.owner.id}/${var.packetloss_repository}@${data.github_repository.packetloss.repo_id}:environment:${each.key}"
         }
       }
     }]
