@@ -13,7 +13,7 @@ defaults to preserving the last approved routing.
 
 ## Bootstrap Status
 
-- The public `Haki-Malai/hm-infra` repository exists.
+- The public `Haki-Malai/infra` repository exists.
 - The S3 state bucket and DynamoDB lock table exist.
 - GitHub Actions secrets and the `AWS_REGION` variable are configured.
 - The pre-push `restrict-branch-writes` ruleset exists and is represented in Terraform.

@@ -20,5 +20,5 @@ import {
 
 import {
   to = github_repository_ruleset.restrict_branch_writes
-  id = "hm-infra:16465508"
+  id = "infra:16465508"
 }

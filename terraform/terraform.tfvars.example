@@ -1,6 +1,6 @@
 aws_region                = "us-east-1"
 github_owner             = "Haki-Malai"
-infrastructure_repository = "hm-infra"
+infrastructure_repository = "infra"
 domain_name              = "hakimalai.com"
 
 # Confirm budget scope and set the real recipient outside source control:

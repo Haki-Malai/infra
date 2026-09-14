@@ -1,4 +1,4 @@
-# hm-infra
+# infra
 
 Infrastructure as code for the `hakimalai.com` public web stack.
 
@@ -7,7 +7,7 @@ application repositories continue to own their source code, builds, and site con
 
 ## Overview
 
-`hm-infra` is intentionally small. It keeps DNS, repository policy, and future
+`infra` is intentionally small. It keeps DNS, repository policy, and future
 AWS resources in one audited Terraform project without mixing infrastructure
 changes into the individual site repos.
 
@@ -33,6 +33,13 @@ changes into the individual site repos.
 ```
 
 ## Delivery Model
+
+PACKETLOSS deployment code lives in `.github/workflows/deploy-packetloss.yml`.
+Once the caller migration is published, PACKETLOSS calls it after successful
+CI, using a pinned infra commit. The run,
+application checkout, environments, and OIDC identity belong to PACKETLOSS.
+Publish the reusable workflow before updating the application's caller; see
+the PACKETLOSS runbook for the ordered migration.
 
 Pull requests run Terraform formatting and validation. Production changes are
 applied by the manual `Terraform Apply` workflow from `main`, using the remote

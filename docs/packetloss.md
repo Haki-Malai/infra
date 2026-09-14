@@ -29,7 +29,7 @@ distribution; it cannot delete objects or administer infrastructure. Dependency
 installation/build runs in a separate job without OIDC permissions. CI calls
 the reusable deployment workflow only after checks succeed, and PRs cannot deploy.
 
-The `hm-infra` Terraform workflow continues to use its existing credentials.
+The `infra` Terraform workflow continues to use its existing credentials.
 Its AWS principal needs the additional policy in
 `backend/packetloss-iam-policy.json` alongside the existing backend/DNS policy.
 That template targets account `975050102915` and region `us-east-1`, as recorded
@@ -42,8 +42,8 @@ Use a managed IAM policy for this supplement; it may exceed an IAM user's
 inline-policy size limit when combined with the existing policy.
 
 The GitHub Terraform token needs environment administration and Actions variable
-write access on PACKETLOSS, in addition to its existing hm-infra permissions.
-Configure these hm-infra Actions settings before running the workflow:
+write access on PACKETLOSS, in addition to its existing infra permissions.
+Configure these infra Actions settings before running the workflow:
 
 - Secret `BUDGET_ALERT_EMAIL`: the confirmed recipient.
 - Optional variable `AWS_GITHUB_OIDC_PROVIDER_ARN`: reuse an existing GitHub OIDC
@@ -95,15 +95,27 @@ in AGENTS.md. These are operational steps, not authorization to execute them.
    apply and public DNS used PACKETLOSS A/AAAA records on GitHub Pages. Review
    drift and import existing resources where required before applying.
 2. Review and attach the supplemental infrastructure IAM policy, configure the
-   hm-infra budget settings, and ensure the GitHub Terraform token can manage
+   infra budget settings, and ensure the GitHub Terraform token can manage
    PACKETLOSS environments. Do not publish app workflows until these are ready.
 3. Plan/apply with `packetloss_production_dns_enabled=false`. This provisions
    hosting, dev DNS, environments, variables, and the budget while preserving
    production's GitHub Pages records. Review the plan for unrelated changes.
-4. Publish PACKETLOSS's CI and reusable AWS deployment workflows on **both**
-   `dev` and `main`, removing `deploy-pages.yml` on both. Run CI on each branch.
+4. Publish `.github/workflows/deploy-packetloss.yml` in `Haki-Malai/infra` first.
+   Obtain the full published commit SHA containing that file. In PACKETLOSS's
+   CI, change only the deployment job's `uses` target to
+   `Haki-Malai/infra/.github/workflows/deploy-packetloss.yml@<full-commit-SHA>`.
+   Preserve `needs: build`, the push/manual event guard, branch guard, `stage`
+   input, and `contents: read`/`id-token: write` permissions. Remove the local
+   `deploy-aws.yml` only with that caller change on **both** `dev` and `main`;
+   remove any remaining `deploy-pages.yml` too. Run CI on each branch.
+   The reusable workflow uses the caller's checkout SHA, environment variables,
+   artifacts, and OIDC identity. Keep environments and IAM trust in PACKETLOSS;
+   no dispatch token or infra environment migration is needed. Pin updates are
+   separate from application merges: each merge deploys its new application SHA.
    It deploys the tested current SHA; superseded revisions are skipped. Keep
-   the old gh-pages branch and Pages settings available for rollback.
+   the old gh-pages branch and Pages settings available for rollback. To roll
+   back the workflow migration, restore the previous local workflow and caller
+   together through the reviewed application workflow.
 5. Obtain `packetloss_environments` from Terraform outputs. Check each
    distribution's HTTPS root and `/deployment.json`; verify the SHA and stage,
    referenced JS/CSS, and a model/maze asset. For the dev distribution, check
@@ -114,7 +126,7 @@ in AGENTS.md. These are operational steps, not authorization to execute them.
 6. Plan/apply with `packetloss_production_dns_enabled=true` (workflow input
    `production_dns=cloudfront`), then check both
    custom domains, HTTPS, deployment metadata, and root asset loading again.
-   Terraform persists the approved routing in the hm-infra Actions variable
+   Terraform persists the approved routing in the infra Actions variable
    `PACKETLOSS_PRODUCTION_DNS_ENABLED`. Subsequent workflow runs default to
    `production_dns=keep`; `pages` deliberately restores production's Pages DNS.
    Persist the same boolean value in local inputs if applying from a workstation.

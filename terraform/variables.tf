@@ -13,7 +13,7 @@ variable "github_owner" {
 variable "infrastructure_repository" {
   description = "Repository that contains this Terraform configuration."
   type        = string
-  default     = "hm-infra"
+  default     = "infra"
 }
 
 variable "domain_name" {
