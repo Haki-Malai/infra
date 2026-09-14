@@ -3,8 +3,7 @@
 Infrastructure as code for the `hakimalai.com` public web stack.
 
 This repo manages the shared infrastructure around the public sites while the
-application repositories continue to own their source code, builds, and GitHub
-Pages content.
+application repositories continue to own their source code, builds, and site content.
 
 ## Overview
 
@@ -14,7 +13,10 @@ changes into the individual site repos.
 
 ## Managed Resources
 
-- Route 53 records for `hakimalai.com`, `qr.hakimalai.com`, and `packetloss.hakimalai.com`.
+- Route 53 records for `hakimalai.com`, `qr.hakimalai.com`, `packetloss.hakimalai.com`, and `dev.packetloss.hakimalai.com`.
+- PACKETLOSS dev/prod S3 buckets, CloudFront distributions, HTTPS, and GitHub OIDC deployment roles.
+- PACKETLOSS GitHub environments, branch restrictions, and per-stage deployment/build variables.
+- A $5 monthly AWS budget with $2.50/$5 actual-spend alerts and a $5 forecast alert.
 - GitHub repository rulesets for branch creation, pushes, and `main` protection.
 - GitHub Actions permissions and the `production` environment for this repo.
 - S3 and DynamoDB resources used by the Terraform remote backend.
@@ -45,10 +47,12 @@ state.
 - Terraform state is stored remotely, not in Git.
 - AWS credentials and GitHub tokens are stored as GitHub Actions secrets.
 - Upstream branch creation and branch pushes are restricted to repository admins.
-- Deployments are limited to the protected `main` branch and the `production` environment.
+- Infrastructure deployments use protected `main` and the `production` environment;
+  PACKETLOSS deployments use their matching `dev`/`prod` environment and branch.
 
 ## Documentation
 
 - [Operations](docs/runbook.md)
 - [Security notes](docs/security.md)
 - [GitHub Pages DNS model](docs/github-pages.md)
+- [PACKETLOSS deployment and budget](docs/packetloss.md)

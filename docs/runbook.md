@@ -7,6 +7,10 @@
 - Merge to `main` only after review.
 - Run the manual `Terraform Apply` workflow from `main` for production changes.
 
+For PACKETLOSS hosting, stage variables, budget inputs, and DNS cutover, follow
+[the PACKETLOSS runbook](packetloss.md). The workflow's `production_dns` input
+defaults to preserving the last approved routing.
+
 ## Bootstrap Status
 
 - The public `Haki-Malai/hm-infra` repository exists.

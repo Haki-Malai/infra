@@ -35,6 +35,13 @@ The apply workflow only runs when `github.ref` is exactly `refs/heads/main`.
 The job also uses the `production` environment, which is restricted to protected
 branches by Terraform.
 
+PACKETLOSS's separate application pipeline uses the `dev` and `prod` environments,
+restricted to `dev` and `main` respectively. Short-lived AWS OIDC credentials
+grant publishing access only to the corresponding stage's bucket and distribution.
+The build job has no OIDC permission; the publishing job installs no dependencies.
+See [PACKETLOSS hosting](packetloss.md) for the infrastructure principal's
+additional permissions and migration requirements.
+
 ## Secrets
 
 PR workflows do not receive AWS or GitHub administration secrets. The PR

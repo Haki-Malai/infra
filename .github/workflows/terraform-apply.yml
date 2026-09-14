@@ -2,6 +2,16 @@ name: Deployment
 
 on:
   workflow_dispatch:
+    inputs:
+      production_dns:
+        description: "Keep current routing, cut over after verification, or roll back to Pages"
+        type: choice
+        required: true
+        default: keep
+        options:
+          - keep
+          - cloudfront
+          - pages
 
 permissions:
   contents: read
@@ -45,6 +55,10 @@ jobs:
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
       GITHUB_TOKEN: ${{ secrets.GH_TERRAFORM_TOKEN }}
       TF_IN_AUTOMATION: "true"
+      TF_VAR_budget_alert_email: ${{ secrets.BUDGET_ALERT_EMAIL }}
+      TF_VAR_budget_scope: "account"
+      TF_VAR_github_oidc_provider_arn: ${{ vars.AWS_GITHUB_OIDC_PROVIDER_ARN }}
+      TF_VAR_packetloss_production_dns_enabled: ${{ inputs.production_dns == 'cloudfront' || (inputs.production_dns == 'keep' && vars.PACKETLOSS_PRODUCTION_DNS_ENABLED == 'true') }}
     steps:
       - name: Main branch guard
         run: |
@@ -53,6 +67,7 @@ jobs:
           test -n "${AWS_SECRET_ACCESS_KEY}"
           test -n "${AWS_REGION}"
           test -n "${GITHUB_TOKEN}"
+          test -n "${TF_VAR_budget_alert_email}"
 
       - name: Checkout
         uses: actions/checkout@v4
