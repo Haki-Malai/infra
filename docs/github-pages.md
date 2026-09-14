@@ -13,10 +13,10 @@ pipelines, and Pages content stay in their own repositories.
 
 - Apex `hakimalai.com`: GitHub Pages `A` and `AAAA` records.
 - `qr.hakimalai.com`: GitHub Pages `A` and `AAAA` records.
-- `packetloss.hakimalai.com`: GitHub Pages `A` and `AAAA` records, matching `qr`.
+- `packetloss.hakimalai.com`: GitHub Pages `CNAME` record pointing to `haki-malai.github.io`.
 
-The current configuration intentionally uses GitHub Pages IP records for both
-apex and subdomain hosts because that matches the existing Route 53 setup.
+The apex and `qr` hosts retain the existing GitHub Pages IP records. The
+`packetloss` subdomain uses GitHub's recommended `CNAME` configuration.
 
 ## Boundaries
 

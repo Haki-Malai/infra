@@ -11,8 +11,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  terraform-validate:
+    name: Terraform Validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Init without backend
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
+
   terraform-plan:
     name: Terraform Plan
+    needs: terraform-validate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:

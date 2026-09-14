@@ -35,18 +35,10 @@ resource "aws_route53_record" "qr_aaaa" {
   records = local.github_pages_apex_ipv6
 }
 
-resource "aws_route53_record" "packetloss_a" {
+resource "aws_route53_record" "packetloss_cname" {
   zone_id = data.aws_route53_zone.primary.zone_id
   name    = local.github_pages_subdomains.packetloss
-  type    = "A"
+  type    = "CNAME"
   ttl     = 300
-  records = local.github_pages_apex_ipv4
-}
-
-resource "aws_route53_record" "packetloss_aaaa" {
-  zone_id = data.aws_route53_zone.primary.zone_id
-  name    = local.github_pages_subdomains.packetloss
-  type    = "AAAA"
-  ttl     = 300
-  records = local.github_pages_apex_ipv6
+  records = ["haki-malai.github.io"]
 }
