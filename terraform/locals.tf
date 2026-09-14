@@ -14,7 +14,7 @@ locals {
   ]
 
   github_pages_subdomains = {
-    qr     = "qr.${var.domain_name}"
-    pacman = "pacman.${var.domain_name}"
+    qr         = "qr.${var.domain_name}"
+    packetloss = "packetloss.${var.domain_name}"
   }
 }

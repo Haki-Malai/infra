@@ -14,7 +14,7 @@ changes into the individual site repos.
 
 ## Managed Resources
 
-- Route 53 records for `hakimalai.com`, `qr.hakimalai.com`, and `pacman.hakimalai.com`.
+- Route 53 records for `hakimalai.com`, `qr.hakimalai.com`, and `packetloss.hakimalai.com`.
 - GitHub repository rulesets for branch creation, pushes, and `main` protection.
 - GitHub Actions permissions and the `production` environment for this repo.
 - S3 and DynamoDB resources used by the Terraform remote backend.

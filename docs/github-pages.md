@@ -7,13 +7,13 @@ pipelines, and Pages content stay in their own repositories.
 
 - `hakimalai.com`: root CV site.
 - `qr.hakimalai.com`: QR project.
-- `pacman.hakimalai.com`: Pacman project.
+- `packetloss.hakimalai.com`: PACKETLOSS project, with the development build at `/dev/`.
 
 ## DNS Model
 
 - Apex `hakimalai.com`: GitHub Pages `A` and `AAAA` records.
 - `qr.hakimalai.com`: GitHub Pages `A` and `AAAA` records.
-- `pacman.hakimalai.com`: GitHub Pages `A` and `AAAA` records, matching `qr`.
+- `packetloss.hakimalai.com`: GitHub Pages `A` and `AAAA` records, matching `qr`.
 
 The current configuration intentionally uses GitHub Pages IP records for both
 apex and subdomain hosts because that matches the existing Route 53 setup.
