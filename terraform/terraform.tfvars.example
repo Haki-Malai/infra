@@ -17,15 +17,29 @@ packetloss_production_dns_enabled = false
 
 packetloss_stages = {
   dev = {
-    branch        = "dev"
-    subdomain     = "dev.packetloss"
-    build_mode    = "development"
-    vite_game_env = "DEFAULT"
+    branch                   = "dev"
+    subdomain                = "dev.packetloss"
+    build_mode               = "development"
+    vite_game_env            = "DEFAULT"
+    api_read_capacity        = 1
+    api_write_capacity       = 1
+    api_lambda_concurrency   = 1
+    api_signup_daily_limit   = 5
+    api_signup_account_limit = 100
+    api_throttle_rate        = 5
+    api_throttle_burst       = 10
   }
   prod = {
-    branch        = "main"
-    subdomain     = "packetloss"
-    build_mode    = "production"
-    vite_game_env = "DEFAULT"
+    branch                   = "main"
+    subdomain                = "packetloss"
+    build_mode               = "production"
+    vite_game_env            = "DEFAULT"
+    api_read_capacity        = 4
+    api_write_capacity       = 4
+    api_lambda_concurrency   = 4
+    api_signup_daily_limit   = 30
+    api_signup_account_limit = 1000
+    api_throttle_rate        = 20
+    api_throttle_burst       = 40
   }
 }

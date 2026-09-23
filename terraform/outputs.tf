@@ -24,6 +24,9 @@ output "packetloss_environments" {
       cloudfront_domain          = aws_cloudfront_distribution.packetloss[stage].domain_name
       cloudfront_distribution_id = aws_cloudfront_distribution.packetloss[stage].id
       deploy_role_arn            = aws_iam_role.packetloss_deploy[stage].arn
+      api_url                    = "https://${local.packetloss_api_domains[stage]}"
+      api_gateway_endpoint       = aws_apigatewayv2_api.packetloss[stage].api_endpoint
+      api_lambda_function        = aws_lambda_function.packetloss_api[stage].function_name
     }
   }
 }

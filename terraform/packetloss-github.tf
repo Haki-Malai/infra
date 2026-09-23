@@ -57,6 +57,11 @@ resource "aws_iam_role_policy" "packetloss_deploy" {
         Effect   = "Allow"
         Action   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
         Resource = aws_cloudfront_distribution.packetloss[each.key].arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"]
+        Resource = aws_lambda_function.packetloss_api[each.key].arn
       }
     ]
   })
@@ -90,6 +95,8 @@ locals {
         SITE_URL                   = "https://${local.packetloss_domains[stage]}"
         BUILD_MODE                 = settings.build_mode
         VITE_GAME_ENV              = settings.vite_game_env
+        VITE_API_URL               = "https://${local.packetloss_api_domains[stage]}"
+        LAMBDA_FUNCTION_NAME       = aws_lambda_function.packetloss_api[stage].function_name
       } : "${stage}/${name}" => { stage = stage, name = name, value = value }
     }
   ]...)

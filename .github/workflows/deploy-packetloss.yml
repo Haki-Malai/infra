@@ -23,6 +23,7 @@ jobs:
       STAGE: ${{ inputs.stage }}
       BUILD_MODE: ${{ vars.BUILD_MODE }}
       VITE_GAME_ENV: ${{ vars.VITE_GAME_ENV }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
     steps:
       - name: Validate stage settings
         shell: bash
@@ -36,6 +37,10 @@ jobs:
             DEFAULT|DEMO) ;;
             *) echo "::error::VITE_GAME_ENV must be DEFAULT or DEMO."; exit 1 ;;
           esac
+          case "$VITE_API_URL" in
+            https://*) ;;
+            *) echo "::error::VITE_API_URL must be an HTTPS origin."; exit 1 ;;
+          esac
 
       - uses: actions/checkout@v4
         with:
@@ -48,6 +53,10 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -58,10 +67,26 @@ jobs:
         run: |
           printf '{"sha":"%s","stage":"%s"}\n' "$GITHUB_SHA" "$STAGE" > dist/deployment.json
 
+      - name: Package API Lambda
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            --requirement backend/requirements.txt --target backend-dist
+          cp -R backend/packetloss_api backend-dist/
+          cd backend-dist
+          zip -qr ../packetloss-api.zip .
+
       - uses: actions/upload-artifact@v4
         with:
           name: site-${{ inputs.stage }}-${{ github.sha }}
           path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-${{ inputs.stage }}-${{ github.sha }}
+          path: packetloss-api.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -79,6 +104,7 @@ jobs:
       AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
       S3_BUCKET: ${{ vars.S3_BUCKET }}
       CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
     steps:
       - name: Skip a superseded revision
         id: revision
@@ -101,12 +127,18 @@ jobs:
           test -n "$AWS_ROLE_ARN"
           test -n "$S3_BUCKET"
           test -n "$CLOUDFRONT_DISTRIBUTION_ID"
+          test -n "$LAMBDA_FUNCTION_NAME"
 
       - uses: actions/download-artifact@v4
         if: steps.revision.outputs.current == 'true'
         with:
           name: site-${{ inputs.stage }}-${{ github.sha }}
           path: dist
+
+      - uses: actions/download-artifact@v4
+        if: steps.revision.outputs.current == 'true'
+        with:
+          name: api-${{ inputs.stage }}-${{ github.sha }}
 
       - name: Authenticate to the stage role
         if: steps.revision.outputs.current == 'true'
@@ -115,6 +147,17 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: packetloss-${{ inputs.stage }}-${{ github.run_id }}
+
+      - name: Publish API Lambda
+        if: steps.revision.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          test -s packetloss-api.zip
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --zip-file fileb://packetloss-api.zip \
+            --no-cli-pager >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$LAMBDA_FUNCTION_NAME"
 
       - name: Upload assets, then publish the entry point
         if: steps.revision.outputs.current == 'true'

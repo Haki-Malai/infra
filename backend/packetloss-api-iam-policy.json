@@ -1,0 +1,90 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PacketlossApiTables",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable",
+        "dynamodb:DescribeContinuousBackups", "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource", "dynamodb:TagResource", "dynamodb:UntagResource",
+        "dynamodb:UpdateContinuousBackups", "dynamodb:UpdateTable", "dynamodb:UpdateTimeToLive"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:975050102915:table/packetloss-*-api"
+    },
+    {
+      "Sid": "CreatePacketlossApiResources",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool", "lambda:CreateFunction", "sns:CreateTopic"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PacketlossUserPools",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPoolClient", "cognito-idp:DeleteUserPool",
+        "cognito-idp:DeleteUserPoolClient", "cognito-idp:DescribeUserPool",
+        "cognito-idp:DescribeUserPoolClient", "cognito-idp:ListTagsForResource",
+        "cognito-idp:TagResource", "cognito-idp:UntagResource",
+        "cognito-idp:UpdateUserPool", "cognito-idp:UpdateUserPoolClient"
+      ],
+      "Resource": "arn:aws:cognito-idp:us-east-1:975050102915:userpool/*"
+    },
+    {
+      "Sid": "PacketlossApiFunctions",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:AddPermission", "lambda:DeleteFunction", "lambda:GetFunction",
+        "lambda:GetFunctionCodeSigningConfig", "lambda:GetFunctionConcurrency",
+        "lambda:GetPolicy", "lambda:ListTags",
+        "lambda:PutFunctionConcurrency", "lambda:RemovePermission", "lambda:TagResource",
+        "lambda:UntagResource", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:us-east-1:975050102915:function:packetloss-*-api"
+    },
+    {
+      "Sid": "PacketlossApiGateway",
+      "Effect": "Allow",
+      "Action": ["apigateway:GET", "apigateway:POST", "apigateway:PUT", "apigateway:PATCH", "apigateway:DELETE"],
+      "Resource": [
+        "arn:aws:apigateway:us-east-1::/apis*",
+        "arn:aws:apigateway:us-east-1::/domainnames*",
+        "arn:aws:apigateway:us-east-1::/tags*"
+      ]
+    },
+    {
+      "Sid": "PacketlossApiRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:DeleteRolePolicy", "iam:GetRole",
+        "iam:GetRolePolicy", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole",
+        "iam:ListRolePolicies", "iam:PassRole", "iam:PutRolePolicy", "iam:TagRole",
+        "iam:UntagRole", "iam:UpdateAssumeRolePolicy", "iam:UpdateRole"
+      ],
+      "Resource": "arn:aws:iam::975050102915:role/packetloss/packetloss-*-api"
+    },
+    {
+      "Sid": "PacketlossApiLogsAndAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups",
+        "logs:ListTagsForResource", "logs:PutRetentionPolicy", "logs:TagResource", "logs:UntagResource",
+        "cloudwatch:DeleteAlarms", "cloudwatch:DescribeAlarms", "cloudwatch:ListTagsForResource",
+        "cloudwatch:PutMetricAlarm", "cloudwatch:TagResource", "cloudwatch:UntagResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PacketlossApiAlerts",
+      "Effect": "Allow",
+      "Action": [
+        "sns:DeleteTopic", "sns:GetSubscriptionAttributes", "sns:GetTopicAttributes",
+        "sns:ListTagsForResource", "sns:ListSubscriptionsByTopic", "sns:SetSubscriptionAttributes",
+        "sns:SetTopicAttributes", "sns:Subscribe", "sns:TagResource", "sns:Unsubscribe", "sns:UntagResource"
+      ],
+      "Resource": "arn:aws:sns:us-east-1:975050102915:packetloss-api-alerts"
+    }
+  ]
+}

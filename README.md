@@ -14,7 +14,7 @@ changes into the individual site repos.
 ## Managed Resources
 
 - Route 53 records for `hakimalai.com`, `qr.hakimalai.com`, `packetloss.hakimalai.com`, and `dev.packetloss.hakimalai.com`.
-- PACKETLOSS dev/prod S3 buckets, CloudFront distributions, HTTPS, and GitHub OIDC deployment roles.
+- PACKETLOSS dev/prod S3 and CloudFront hosting plus fixed-capacity Cognito, DynamoDB, Lambda, HTTP API, HTTPS, alarms, and GitHub OIDC deployment roles.
 - PACKETLOSS GitHub environments, branch restrictions, and per-stage deployment/build variables.
 - A $5 monthly AWS budget with $2.50/$5 actual-spend alerts and a $5 forecast alert.
 - GitHub repository rulesets for branch creation, pushes, and `main` protection.
