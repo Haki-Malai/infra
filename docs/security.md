@@ -35,6 +35,11 @@ The apply workflow only runs when `github.ref` is exactly `refs/heads/main`.
 The job also uses the `production` environment, which is restricted to protected
 branches by Terraform.
 
+Production approval happens before planning. Plan and apply run in the same
+job, applying the saved plan automatically after planning succeeds. The saved
+plan stays on the runner and is never uploaded as a workflow artifact because
+it can contain secrets in plaintext.
+
 PACKETLOSS's separate application pipeline uses the `dev` and `prod` environments,
 restricted to `dev` and `main` respectively. Short-lived AWS OIDC credentials
 grant publishing access only to the corresponding stage's bucket and distribution.

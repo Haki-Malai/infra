@@ -63,12 +63,6 @@ variable "packetloss_stages" {
   }
 }
 
-variable "packetloss_production_dns_enabled" {
-  description = "Switch production DNS to CloudFront only after both sites have been uploaded and checked."
-  type        = bool
-  default     = false
-}
-
 variable "github_oidc_provider_arn" {
   description = "Existing GitHub OIDC provider ARN, or empty to create it; inspect IAM before the first apply."
   type        = string

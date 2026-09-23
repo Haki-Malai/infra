@@ -109,10 +109,3 @@ resource "github_actions_environment_variable" "packetloss" {
   variable_name = each.value.name
   value         = each.value.value
 }
-
-# Remember the approved cutover so later infrastructure runs preserve its routing.
-resource "github_actions_variable" "packetloss_production_dns_enabled" {
-  repository    = var.infrastructure_repository
-  variable_name = "PACKETLOSS_PRODUCTION_DNS_ENABLED"
-  value         = tostring(var.packetloss_production_dns_enabled)
-}

@@ -9,9 +9,6 @@ budget_scope = "account"
 monthly_budget_usd = 5
 budget_alert_usd = 2.5
 
-# Set true only after deployment.json and assets have been checked on CloudFront.
-packetloss_production_dns_enabled = false
-
 # If IAM already contains GitHub's OIDC provider, reuse its ARN instead of creating it.
 # github_oidc_provider_arn = "arn:aws:iam::975050102915:oidc-provider/token.actions.githubusercontent.com"
 

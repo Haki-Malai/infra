@@ -15,7 +15,7 @@ output "managed_domains" {
 }
 
 output "packetloss_environments" {
-  description = "Deployment targets and CloudFront hosts for pre-cutover verification."
+  description = "Deployment targets and CloudFront hosts for deployment verification."
   value = {
     for stage, settings in var.packetloss_stages : stage => {
       branch                     = settings.branch

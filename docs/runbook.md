@@ -7,9 +7,9 @@
 - Merge to `main` only after review.
 - Run the manual `Terraform Apply` workflow from `main` for production changes.
 
-For PACKETLOSS hosting, stage variables, budget inputs, and DNS cutover, follow
-[the PACKETLOSS runbook](packetloss.md). The workflow's `production_dns` input
-defaults to preserving the last approved routing.
+For PACKETLOSS hosting, stage variables, budget inputs, and deployment, follow
+[the PACKETLOSS runbook](packetloss.md). Both PACKETLOSS domains always use
+CloudFront aliases managed by Terraform.
 
 ## Bootstrap Status
 

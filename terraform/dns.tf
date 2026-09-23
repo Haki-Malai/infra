@@ -39,16 +39,10 @@ resource "aws_route53_record" "packetloss_a" {
   zone_id = data.aws_route53_zone.primary.zone_id
   name    = local.packetloss_domains.prod
   type    = "A"
-  ttl     = var.packetloss_production_dns_enabled ? null : 300
-  records = var.packetloss_production_dns_enabled ? null : local.github_pages_apex_ipv4
-
-  dynamic "alias" {
-    for_each = var.packetloss_production_dns_enabled ? [true] : []
-    content {
-      name                   = aws_cloudfront_distribution.packetloss["prod"].domain_name
-      zone_id                = aws_cloudfront_distribution.packetloss["prod"].hosted_zone_id
-      evaluate_target_health = false
-    }
+  alias {
+    name                   = aws_cloudfront_distribution.packetloss["prod"].domain_name
+    zone_id                = aws_cloudfront_distribution.packetloss["prod"].hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
@@ -56,16 +50,10 @@ resource "aws_route53_record" "packetloss_aaaa" {
   zone_id = data.aws_route53_zone.primary.zone_id
   name    = local.packetloss_domains.prod
   type    = "AAAA"
-  ttl     = var.packetloss_production_dns_enabled ? null : 300
-  records = var.packetloss_production_dns_enabled ? null : local.github_pages_apex_ipv6
-
-  dynamic "alias" {
-    for_each = var.packetloss_production_dns_enabled ? [true] : []
-    content {
-      name                   = aws_cloudfront_distribution.packetloss["prod"].domain_name
-      zone_id                = aws_cloudfront_distribution.packetloss["prod"].hosted_zone_id
-      evaluate_target_health = false
-    }
+  alias {
+    name                   = aws_cloudfront_distribution.packetloss["prod"].domain_name
+    zone_id                = aws_cloudfront_distribution.packetloss["prod"].hosted_zone_id
+    evaluate_target_health = false
   }
 }
 

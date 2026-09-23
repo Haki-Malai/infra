@@ -2,16 +2,6 @@ name: Deployment
 
 on:
   workflow_dispatch:
-    inputs:
-      production_dns:
-        description: "Keep current routing, cut over after verification, or roll back to Pages"
-        type: choice
-        required: true
-        default: keep
-        options:
-          - keep
-          - cloudfront
-          - pages
 
 permissions:
   contents: read
@@ -43,11 +33,12 @@ jobs:
       - name: Validate
         run: terraform validate
 
-  terraform-plan:
-    name: Terraform Plan
+  terraform-apply:
+    name: Terraform Plan and Apply
     needs: terraform-validate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -58,7 +49,6 @@ jobs:
       TF_VAR_budget_alert_email: ${{ secrets.BUDGET_ALERT_EMAIL }}
       TF_VAR_budget_scope: "account"
       TF_VAR_github_oidc_provider_arn: ${{ vars.AWS_GITHUB_OIDC_PROVIDER_ARN }}
-      TF_VAR_packetloss_production_dns_enabled: ${{ inputs.production_dns == 'cloudfront' || (inputs.production_dns == 'keep' && vars.PACKETLOSS_PRODUCTION_DNS_ENABLED == 'true') }}
     steps:
       - name: Main branch guard
         run: |
@@ -92,54 +82,6 @@ jobs:
       - name: Plan
         working-directory: terraform
         run: terraform plan -input=false -lock-timeout=5m -out=tfplan
-
-      - name: Upload plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan
-          path: terraform/tfplan
-          if-no-files-found: error
-          retention-days: 1
-
-  terraform-apply:
-    name: Terraform Apply
-    needs: terraform-plan
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-      GITHUB_TOKEN: ${{ secrets.GH_TERRAFORM_TOKEN }}
-      TF_IN_AUTOMATION: "true"
-    steps:
-      - name: Main branch guard
-        run: |
-          test "${GITHUB_REF}" = "refs/heads/main"
-          test -n "${AWS_ACCESS_KEY_ID}"
-          test -n "${AWS_SECRET_ACCESS_KEY}"
-          test -n "${AWS_REGION}"
-          test -n "${GITHUB_TOKEN}"
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-
-      - name: Init
-        working-directory: terraform
-        run: terraform init -input=false
-
-      - name: Download plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan
-          path: terraform
 
       - name: Apply
         working-directory: terraform
