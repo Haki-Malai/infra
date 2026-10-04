@@ -1,0 +1,103 @@
+#!/bin/bash
+set -euo pipefail
+dnf install -y nginx jq unzip nodejs24 amazon-cloudwatch-agent
+node_binary="$(command -v node-24 || command -v node)"
+ln -sfn "$node_binary" /usr/local/bin/packetloss-node
+id packetloss >/dev/null 2>&1 || useradd --system --home-dir /var/lib/packetloss --shell /sbin/nologin packetloss
+install -d -o packetloss -g packetloss /var/lib/packetloss/outbox /var/log/packetloss
+install -d -m 0755 /opt/packetloss/releases /etc/packetloss /usr/local/lib/packetloss
+printf '%s' '${runtime_env}' | base64 -d >/etc/packetloss/server.env
+printf 'GAME_ADMIN_TOKEN=%s\n' "$(/usr/local/bin/packetloss-node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')" >>/etc/packetloss/server.env
+printf '%s' '${prepare_script}' | base64 -d >/usr/local/lib/packetloss/prepare
+printf '%s' '${deploy_script}' | base64 -d >/usr/local/lib/packetloss/deploy
+# curl's native SigV4 downloads the first Node bundle without a CLI dependency.
+metadata_token="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)"
+role_name="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 -H "X-aws-ec2-metadata-token: $metadata_token" http://169.254.169.254/latest/meta-data/iam/security-credentials/)"
+credentials="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 -H "X-aws-ec2-metadata-token: $metadata_token" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$role_name")"
+printf '%s' "$credentials" | jq -er 'select(.Code == "Success") | "user = " + ((.AccessKeyId + ":" + .SecretAccessKey) | @json), "header = " + (("x-amz-security-token: " + .Token) | @json)' | \
+  curl --config - --aws-sigv4 'aws:amz:us-east-1:s3' --fail --silent --show-error --connect-timeout 5 --max-time 120 \
+    'https://${artifacts_bucket}.s3.us-east-1.amazonaws.com/${management_key}' --output /run/packetloss-management.zip
+unset credentials metadata_token
+printf '%s  %s\n' '${management_sha256}' /run/packetloss-management.zip | sha256sum -c -
+unzip -o /run/packetloss-management.zip -d /usr/local/lib/packetloss
+printf '%s' '${certificate_config}' | base64 -d >/etc/packetloss/certificate.json
+chmod 0600 /etc/packetloss/certificate.json
+printf '%s' '${stop_script}' | base64 -d >/usr/local/bin/packetloss-control-stop
+printf '%s' '${nginx_config}' | base64 -d >/etc/packetloss/nginx.conf
+printf '%s' '${service}' | base64 -d >/etc/systemd/system/packetloss.service
+printf '%s' '${log_config}' | base64 -d >/etc/packetloss/cloudwatch.json
+chmod 0755 /usr/local/lib/packetloss/prepare /usr/local/lib/packetloss/deploy /usr/local/bin/packetloss-control-stop
+chmod 0640 /etc/packetloss/server.env
+chown root:packetloss /etc/packetloss/server.env
+cat >/etc/systemd/system/packetloss-prepare.service <<'UNIT'
+[Unit]
+Description=Prepare ephemeral DNS, TLS, and selected PACKETLOSS release
+Wants=network-online.target
+After=network-online.target cloud-final.service
+Before=packetloss.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/packetloss/prepare
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat >/etc/systemd/system/packetloss-certificate.service <<'UNIT'
+[Unit]
+Description=Renew PACKETLOSS TLS certificate
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n /run/packetloss-certificate.lock /usr/local/bin/packetloss-node /usr/local/lib/packetloss/certificate.mjs /etc/packetloss/certificate.json --reload
+TimeoutStartSec=600
+UNIT
+cat >/etc/systemd/system/packetloss-certificate.timer <<'UNIT'
+[Unit]
+Description=Check PACKETLOSS certificate renewal
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=12h
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+cat >/etc/systemd/system/packetloss-idle.service <<'UNIT'
+[Unit]
+Description=Stop only this idle PACKETLOSS instance
+After=packetloss.service
+ConditionPathExists=/run/packetloss-instance.env
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/packetloss/server.env
+EnvironmentFile=/run/packetloss-instance.env
+ExecStart=/usr/bin/flock -n -E 0 /run/packetloss-maintenance.lock /usr/local/bin/packetloss-node /usr/local/lib/packetloss/idle.mjs
+TimeoutStartSec=45
+UNIT
+cat >/etc/systemd/system/packetloss-idle.timer <<'UNIT'
+[Unit]
+Description=Check PACKETLOSS idle shutdown
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=1min
+[Install]
+WantedBy=timers.target
+UNIT
+cat >/etc/logrotate.d/packetloss <<'ROTATE'
+/var/log/packetloss/game.log {
+  daily
+  rotate 3
+  size 10M
+  missingok
+  copytruncate
+  compress
+  notifempty
+}
+ROTATE
+systemctl daemon-reload
+systemctl enable packetloss-prepare.service packetloss.service packetloss-certificate.timer packetloss-idle.timer
+systemctl disable nginx
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/etc/packetloss/cloudwatch.json -s
+# Terraform waits for this marker before its one-time stop. Gameplay only starts on
+# the next owner-authorized boot, after a versioned application has been deployed.
+touch /var/lib/packetloss/bootstrap-ready

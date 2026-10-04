@@ -60,7 +60,7 @@ resource "aws_iam_role_policy" "packetloss_deploy" {
       },
       {
         Effect   = "Allow"
-        Action   = ["lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"]
+        Action   = ["lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration"]
         Resource = aws_lambda_function.packetloss_api[each.key].arn
       }
     ]

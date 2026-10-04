@@ -21,6 +21,8 @@ changes into the individual site repos.
 - GitHub Actions permissions and the `production` environment for this repo.
 - S3 and DynamoDB resources used by the Terraform remote backend.
 - A reserved module boundary for future free-tier EC2 infrastructure.
+- Opt-in private multiplayer servers in Frankfurt and N. Virginia, with central
+  control/ticket/results storage and one active region at a time.
 
 ## Repository Layout
 
@@ -63,3 +65,4 @@ state.
 - [Security notes](docs/security.md)
 - [GitHub Pages DNS model](docs/github-pages.md)
 - [PACKETLOSS deployment and budget](docs/packetloss.md)
+- [Private multiplayer lifecycle](docs/game-server.md)

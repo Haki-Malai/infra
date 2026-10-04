@@ -27,6 +27,7 @@
         "cognito-idp:CreateUserPoolClient", "cognito-idp:DeleteUserPool",
         "cognito-idp:DeleteUserPoolClient", "cognito-idp:DescribeUserPool",
         "cognito-idp:DescribeUserPoolClient", "cognito-idp:ListTagsForResource",
+        "cognito-idp:GetUserPoolMfaConfig",
         "cognito-idp:TagResource", "cognito-idp:UntagResource",
         "cognito-idp:UpdateUserPool", "cognito-idp:UpdateUserPoolClient"
       ],
@@ -53,6 +54,21 @@
         "arn:aws:apigateway:us-east-1::/domainnames*",
         "arn:aws:apigateway:us-east-1::/tags*"
       ]
+    },
+    {
+      "Sid": "PacketlossApiStageTags",
+      "Effect": "Allow",
+      "Action": "apigateway:TagResource",
+      "Resource": "arn:aws:apigateway:us-east-1::/apis/*/stages"
+    },
+    {
+      "Sid": "ApiGatewayServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::975050102915:role/aws-service-role/ops.apigateway.amazonaws.com/AWSServiceRoleForAPIGateway",
+      "Condition": {
+        "StringEquals": { "iam:AWSServiceName": "ops.apigateway.amazonaws.com" }
+      }
     },
     {
       "Sid": "PacketlossApiRoles",

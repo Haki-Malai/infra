@@ -1,0 +1,172 @@
+name: Deploy Game Server
+
+on:
+  workflow_call:
+    inputs:
+      infra_ref:
+        description: "Full reviewed infra commit SHA, matching this reusable workflow's ref"
+        required: true
+        type: string
+      force:
+        description: "Explicitly interrupt active matches instead of draining"
+        type: boolean
+        default: false
+      deploy_runtime:
+        description: "Install the tested backend on running hosts as well as selecting it for next boot"
+        type: boolean
+        default: true
+      release_sha:
+        description: "Retained 40-character release SHA to roll back; blank builds the caller commit"
+        type: string
+        default: ""
+permissions:
+  contents: read
+
+concurrency:
+  group: packetloss-game-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build and verify ARM backend
+        if: inputs.release_sha == ''
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm run typecheck:server
+          pnpm lint
+          pnpm test
+          GAME_BUILD_VERSION="$GITHUB_SHA" pnpm run build:server
+          test -s server-dist/server.js
+          test -s server-dist/manifest.json
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -czf server-linux-arm64.tar.gz -C server-dist .
+          sha256sum server-linux-arm64.tar.gz > server-linux-arm64.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        if: inputs.release_sha == ''
+        with:
+          name: game-${{ github.sha }}
+          path: |
+            server-linux-arm64.tar.gz
+            server-linux-arm64.tar.gz.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Validate infrastructure tooling revision
+        env:
+          INFRA_REF: ${{ inputs.infra_ref }}
+        run: '[[ "$INFRA_REF" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          repository: Haki-Malai/infra
+          ref: ${{ inputs.infra_ref }}
+          path: packetloss-infra
+          persist-credentials: false
+      - name: Build Node deployment tools
+        working-directory: packetloss-infra/packetloss
+        run: npm ci && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-tooling-${{ github.sha }}
+          path: packetloss-infra/packetloss/dist/cloud.mjs
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BUCKET: ${{ vars.GAME_ARTIFACTS_BUCKET }}
+      EU_INSTANCE: ${{ vars.GAME_EU_INSTANCE_ID }}
+      NA_INSTANCE: ${{ vars.GAME_NA_INSTANCE_ID }}
+      FORCE: ${{ inputs.force }}
+      DEPLOY_RUNTIME: ${{ inputs.deploy_runtime }}
+      RELEASE_SHA: ${{ inputs.release_sha || github.sha }}
+      ROLLBACK_RELEASE: ${{ inputs.release_sha }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-tooling-${{ github.sha }}
+          path: tooling
+      - uses: actions/download-artifact@v4
+        if: inputs.release_sha == ''
+        with:
+          name: game-${{ github.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Publish version and deploy selected release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BUCKET"
+          test -n "$EU_INSTANCE"
+          test -n "$NA_INSTANCE"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ -n "$ROLLBACK_RELEASE" ]]; then
+            node tooling/cloud.mjs s3-get "$BUCKET" "releases/$RELEASE_SHA/release.json" release.json
+            test "$(jq -er '.sha' release.json)" = "$RELEASE_SHA"
+            digest=$(jq -er '.sha256 | select(test("^[0-9a-f]{64}$"))' release.json)
+            node tooling/cloud.mjs s3-get "$BUCKET" "releases/$RELEASE_SHA/server-linux-arm64.tar.gz" server-linux-arm64.tar.gz
+            printf '%s  server-linux-arm64.tar.gz\n' "$digest" | sha256sum -c -
+          else
+            sha256sum -c server-linux-arm64.tar.gz.sha256
+            digest=$(cut -d ' ' -f 1 server-linux-arm64.tar.gz.sha256)
+            jq -n --arg sha "$RELEASE_SHA" --arg sha256 "$digest" \
+              '{sha:$sha,sha256:$sha256}' > release.json
+            if node tooling/cloud.mjs s3-head "$BUCKET" "releases/$RELEASE_SHA/release.json" >/dev/null 2>&1; then
+              node tooling/cloud.mjs s3-get "$BUCKET" "releases/$RELEASE_SHA/release.json" existing-release.json
+              cmp -s release.json existing-release.json
+              node tooling/cloud.mjs s3-head "$BUCKET" "releases/$RELEASE_SHA/server-linux-arm64.tar.gz"
+            else
+              node tooling/cloud.mjs s3-put "$BUCKET" "releases/$RELEASE_SHA/server-linux-arm64.tar.gz" server-linux-arm64.tar.gz
+              node tooling/cloud.mjs s3-put "$BUCKET" "releases/$RELEASE_SHA/release.json" release.json
+            fi
+          fi
+          for target in "eu-central-1:$EU_INSTANCE" "us-east-1:$NA_INSTANCE"; do
+            region=${target%%:*}
+            instance=${target#*:}
+            state=$(node tooling/cloud.mjs ec2-state "$region" "$instance")
+            if [[ "$state" != stopped && "$state" != running ]]; then
+              echo "::error::Refusing deployment while $region instance is $state."
+              exit 1
+            fi
+            if [[ "$state" == running && "$DEPLOY_RUNTIME" == true ]]; then
+              mode=''
+              if [[ "$FORCE" == true ]]; then mode=--force; fi
+              remote="set -eu; timeout 120 /usr/local/bin/packetloss-node /usr/local/lib/packetloss/cloud.mjs s3-get '$BUCKET' 'releases/$RELEASE_SHA/server-linux-arm64.tar.gz' /run/packetloss-deploy.tar.gz; /usr/local/lib/packetloss/deploy /run/packetloss-deploy.tar.gz '$RELEASE_SHA' '$digest' '$mode'"
+              command_id=$(node tooling/cloud.mjs ssm-command "$region" "$instance" "$remote")
+              completed=false
+              for ((attempt=0; attempt<180; attempt++)); do
+                state=$(node tooling/cloud.mjs ssm-status "$region" "$command_id" "$instance" 2>/dev/null || true)
+                case "$state" in
+                  Success) completed=true; break ;;
+                  Failed|Cancelled|TimedOut|Cancelling) echo "::error::Deployment failed; inspect SSM command $command_id."; exit 1 ;;
+                esac
+                sleep 5
+              done
+              [[ "$completed" == true ]] || { echo '::error::Deployment timeout.'; exit 1; }
+            fi
+            # Change boot selection only after a running deployment succeeded.
+            node tooling/cloud.mjs s3-put "$BUCKET" "targets/$region.json" release.json
+          done

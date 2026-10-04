@@ -115,9 +115,10 @@ in AGENTS.md. These are operational steps, not authorization to execute them.
    infra budget settings, and ensure the GitHub Terraform token can manage
    PACKETLOSS environments. Do not publish app workflows until these are ready.
 3. Review the infrastructure changes, then run the manual Deployment workflow
-   on `main` and approve the production environment's plan-and-apply job.
-   Approval happens before planning; the job automatically applies the saved
-   plan without uploading it as an artifact. This provisions
+   on `main`, review the completed plan output, then approve the separate
+   apply job. It checks and applies the exact saved plan and its plan-generated
+   Lambda archives from a commit-bound bundle in private encrypted storage,
+   without publishing them as a GitHub artifact. This provisions
    hosting, both API domains, accounts, fixed storage/compute capacity, alarms,
    environments, variables, and the budget. Both website domains always point
    to their CloudFront distributions through Terraform-managed A/AAAA aliases.
@@ -127,6 +128,8 @@ in AGENTS.md. These are operational steps, not authorization to execute them.
    Obtain the full published commit SHA containing that file. In PACKETLOSS's
    CI, change only the deployment job's `uses` target to
    `Haki-Malai/infra/.github/workflows/deploy-packetloss.yml@<full-commit-SHA>`.
+   Add `with.infra_ref: <full-commit-SHA>` with that same literal SHA when updating
+   the workflow pin, so the Node deployment CLI comes from the reviewed revision.
    Preserve `needs: [build, backend]`, the push/manual event guard, branch guard, `stage`
    input, and `contents: read`/`id-token: write` permissions. Run CI on `dev`,
    verify the deployment, then promote the application to `main`.
@@ -136,6 +139,14 @@ in AGENTS.md. These are operational steps, not authorization to execute them.
    separate from application merges: each merge deploys its new application SHA.
    It packages and updates the Lambda before publishing the site from the tested
    current SHA; superseded revisions are skipped.
+   The current backend build uses Node.js 24 and emits bundled `account.mjs` and
+   `multiplayer.mjs` entrypoints targeting Node.js 22. The reusable workflow sets
+   `nodejs22.x` and the matching handlers after uploading the ZIP. Publish the updated infra
+   workflow and update the caller's pinned SHA together before deploying this
+   application version; the previous pin expects the former backend package.
+   Existing deployments need a coordinated maintenance window because runtime
+   and code updates are separate operations. See the
+   [Node.js rollout instructions](game-server.md#nodejs-rollout-from-an-existing-installation).
 5. Obtain `packetloss_environments` from Terraform outputs. Check each API
    `/health` route, signup capacity response, email confirmation, login, profile
    update, idempotent record upload, local fallback, and logout. Check each

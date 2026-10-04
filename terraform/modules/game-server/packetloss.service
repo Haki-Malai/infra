@@ -1,0 +1,27 @@
+[Unit]
+Description=PACKETLOSS authoritative game server
+Requires=packetloss-prepare.service
+After=packetloss-prepare.service
+ConditionPathExists=/opt/packetloss/current/server.js
+
+[Service]
+Type=simple
+User=packetloss
+Group=packetloss
+WorkingDirectory=/opt/packetloss/current
+EnvironmentFile=/etc/packetloss/server.env
+EnvironmentFile=/run/packetloss-instance.env
+ExecStart=/usr/local/bin/packetloss-node server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/packetloss /var/log/packetloss
+StandardOutput=append:/var/log/packetloss/game.log
+StandardError=append:/var/log/packetloss/game.log
+
+[Install]
+WantedBy=multi-user.target

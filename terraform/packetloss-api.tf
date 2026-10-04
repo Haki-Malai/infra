@@ -34,20 +34,14 @@ data "archive_file" "packetloss_api_bootstrap" {
   output_path = "${path.module}/.terraform/packetloss-api-bootstrap.zip"
 
   source {
-    filename = "packetloss_api/__init__.py"
-    content  = ""
-  }
-
-  source {
-    filename = "packetloss_api/lambda_handler.py"
-    content  = <<-PYTHON
-      def handler(_event, _context):
-          return {
-              "statusCode": 503,
-              "headers": {"content-type": "application/json", "retry-after": "30"},
-              "body": '{"code":"SERVICE_UNAVAILABLE","message":"API deployment is pending."}',
-          }
-    PYTHON
+    filename = "account.mjs"
+    content  = <<-JAVASCRIPT
+      export const handler = async () => ({
+        statusCode: 503,
+        headers: {"content-type": "application/json", "retry-after": "30"},
+        body: JSON.stringify({code: "SERVICE_UNAVAILABLE", message: "API deployment is pending."}),
+      });
+    JAVASCRIPT
   }
 }
 
@@ -220,9 +214,9 @@ resource "aws_lambda_function" "packetloss_api" {
   for_each         = var.packetloss_stages
   function_name    = "packetloss-${each.key}-api"
   role             = aws_iam_role.packetloss_api[each.key].arn
-  runtime          = "python3.12"
+  runtime          = "nodejs22.x"
   architectures    = ["x86_64"]
-  handler          = "packetloss_api.lambda_handler.handler"
+  handler          = "account.handler"
   filename         = data.archive_file.packetloss_api_bootstrap.output_path
   source_code_hash = data.archive_file.packetloss_api_bootstrap.output_base64sha256
   memory_size      = 256

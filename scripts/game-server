@@ -1,0 +1,90 @@
+#!/bin/bash
+# Owner operations; remote mutations remain subject to the repository review gate.
+set -euo pipefail
+command_name=${1:-help}
+shift || true
+case "$command_name" in
+  help|-h|--help)
+    cat <<'HELP'
+Usage: bash scripts/game-server start --region eu|na
+       bash scripts/game-server status
+       bash scripts/game-server stop [--region eu|na] [--force]
+       bash scripts/game-server logs [--region eu|na]
+
+Start requires GAME_SERVER_TOKEN (production Cognito access token) and optional
+GAME_API_URL. Stop/logs use approved AWS credentials and GAME_SERVER_CONFIG, a
+private JSON file from `terraform -chdir=terraform output -json game_servers`.
+Stop and logs infer the active region if omitted. Stops are IAM-authorized direct
+control-Lambda invocations. No command grants remote-operation authorization.
+Build the Node cloud tools first: npm --prefix packetloss ci && npm --prefix packetloss run build
+HELP
+    exit 0 ;;
+  start|status|stop|logs) ;;
+  *) echo 'Unknown command. Use --help.' >&2; exit 2 ;;
+esac
+region=''
+force=false
+while (( $# )); do
+  case "$1" in
+    --region) region=${2:?region required}; shift 2 ;;
+    --force) force=true; shift ;;
+    eu|na) region=$1; shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+[[ "$region" == '' || "$region" == eu || "$region" == na ]] || { echo 'Region must be eu or na.' >&2; exit 2; }
+[[ "$force" == false || "$command_name" == stop ]] || { echo '--force applies only to stop.' >&2; exit 2; }
+api_url=${GAME_API_URL:-https://api.packetloss.hakimalai.com}
+cloud_script="$(cd -- "$(dirname -- "$0")/../packetloss" && pwd)/dist/cloud.mjs"
+[[ "$api_url" == https://* ]] || { echo 'HTTPS API required.' >&2; exit 2; }
+status() { curl --fail --silent --show-error --max-time 15 "$api_url/v1/multiplayer/status"; }
+if [[ "$command_name" == status ]]; then status | jq .; exit 0; fi
+if [[ "$command_name" == start ]]; then
+  [[ -n "$region" ]] || { echo 'start requires --region eu|na.' >&2; exit 2; }
+  : "${GAME_SERVER_TOKEN:?production access token required}"
+  body=$(jq -n --arg region "$region" '{region:$region}')
+  response=$(printf 'header = "Authorization: Bearer %s"\n' "$GAME_SERVER_TOKEN" | \
+    curl --config - --fail-with-body --silent --show-error --max-time 30 \
+      -H 'Content-Type: application/json' --data "$body" "$api_url/v1/multiplayer/start")
+  jq . <<<"$response"
+  for ((attempt=0; attempt<120; attempt++)); do
+    response=$(status)
+    phase=$(jq -r '.phase' <<<"$response")
+    case "$phase" in
+      ready) jq . <<<"$response"; exit 0 ;;
+      failed) jq . <<<"$response"; exit 1 ;;
+    esac
+    sleep 5
+  done
+  echo 'Readiness timed out; inspect status and logs.' >&2
+  exit 1
+fi
+: "${GAME_SERVER_CONFIG:?path to Terraform game_servers JSON output required}"
+if [[ -z "$region" ]]; then region=$(status | jq -r '.activeRegion // empty'); fi
+if [[ -z "$region" ]]; then
+  if [[ "$command_name" == stop ]]; then echo 'No active region.'; exit 0; fi
+  echo 'No active region; use logs --region eu|na.' >&2
+  exit 2
+fi
+aws_region=$(jq -er --arg region "$region" '.regions[$region].awsRegion' "$GAME_SERVER_CONFIG")
+[[ "$aws_region" == eu-central-1 || "$aws_region" == us-east-1 ]]
+if [[ "$command_name" == logs ]]; then
+  node "$cloud_script" logs-tail "$aws_region" "/packetloss/game/$aws_region"
+  exit 0
+fi
+function_name=$(jq -er '.control_lambda' "$GAME_SERVER_CONFIG")
+payload=$(jq -n --arg region "$region" --argjson force "$force" '{source:"packetloss-operator",operation:"stop",region:$region,force:$force}')
+response_file=$(mktemp)
+trap 'rm -f "$response_file"' EXIT
+metadata=$(node "$cloud_script" lambda-invoke "$function_name" "$payload" "$response_file")
+if jq -e '.FunctionError' <<<"$metadata" >/dev/null; then cat "$response_file" >&2; exit 1; fi
+jq . "$response_file"
+jq -e '.statusCode >= 200 and .statusCode < 300' "$response_file" >/dev/null
+for ((attempt=0; attempt<120; attempt++)); do
+  response=$(status)
+  phase=$(jq -r --arg region "$region" '.regions[$region].phase' <<<"$response")
+  if [[ "$phase" == stopped ]]; then echo stopped; exit 0; fi
+  sleep 5
+done
+echo 'Stop did not complete within ten minutes; inspect the existing operation.' >&2
+exit 1

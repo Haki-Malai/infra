@@ -35,10 +35,15 @@ The apply workflow only runs when `github.ref` is exactly `refs/heads/main`.
 The job also uses the `production` environment, which is restricted to protected
 branches by Terraform.
 
-Production approval happens before planning. Plan and apply run in the same
-job, applying the saved plan automatically after planning succeeds. The saved
-plan stays on the runner and is never uploaded as a workflow artifact because
-it can contain secrets in plaintext.
+Planning runs from protected main; the production environment gates application
+only after the saved plan is available to review. Plans may contain plaintext
+secrets, so the workflow stores a checksummed bundle containing the exact plan,
+commit metadata, and the exact plan-generated Lambda archives only in the private
+encrypted state bucket. Apply restores that bundle on its fresh runner, verifies
+both bundle and plan checksums, and rejects plans older than 24 hours. Plan bundles
+are never GitHub workflow artifacts.
+Current plan objects are removed after apply; retained S3 versions require
+prefix-scoped cleanup that excludes state files. See the multiplayer runbook.
 
 PACKETLOSS's separate application pipeline uses the `dev` and `prod` environments,
 restricted to `dev` and `main` respectively. Short-lived AWS OIDC credentials

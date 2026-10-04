@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+metadata_token="$(curl --fail --silent --show-error -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)"
+public_ip="$(curl --fail --silent --show-error -H "X-aws-ec2-metadata-token: $metadata_token" http://169.254.169.254/latest/meta-data/public-ipv4)"
+instance_id="$(curl --fail --silent --show-error -H "X-aws-ec2-metadata-token: $metadata_token" http://169.254.169.254/latest/meta-data/instance-id)"
+/usr/local/bin/packetloss-node /usr/local/lib/packetloss/cloud.mjs lease-get '${control_table}' >/run/packetloss-lease.json
+jq -e --arg region '${region_key}' --arg instance "$instance_id" '.Item.activeRegion.S == $region and .Item.instanceId.S == $instance' /run/packetloss-lease.json >/dev/null
+instance_run_id="$(jq -er '.Item.instanceRunId.S' /run/packetloss-lease.json)"
+[[ "$instance_run_id" =~ ^[a-zA-Z0-9_-]+$ ]]
+jq -n --arg ip "$public_ip" --arg host '${hostname}' '{Changes:[{Action:"UPSERT",ResourceRecordSet:{Name:$host,Type:"A",TTL:30,ResourceRecords:[{Value:$ip}]}}]}' >/run/packetloss-dns.json
+/usr/local/bin/packetloss-node /usr/local/lib/packetloss/cloud.mjs dns-change '${zone_id}' /run/packetloss-dns.json
+# DNS-01 works even when a previous certificate expired while EC2 was stopped.
+flock -w 600 /run/packetloss-certificate.lock /usr/local/bin/packetloss-node \
+  /usr/local/lib/packetloss/certificate.mjs /etc/packetloss/certificate.json
+install -m 0644 /etc/packetloss/nginx.conf /etc/nginx/conf.d/packetloss.conf
+nginx -t
+systemctl start nginx
+/usr/local/bin/packetloss-node /usr/local/lib/packetloss/cloud.mjs s3-get '${bucket}' 'targets/${region}.json' /run/packetloss-release.json
+release="$(jq -er '.sha' /run/packetloss-release.json)"
+digest="$(jq -er '.sha256' /run/packetloss-release.json)"
+[[ "$release" =~ ^[0-9a-f]{40}$ ]] && [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+/usr/local/bin/packetloss-node /usr/local/lib/packetloss/cloud.mjs s3-get '${bucket}' "releases/$release/server-linux-arm64.tar.gz" /run/packetloss-release.tar.gz
+/usr/local/lib/packetloss/deploy /run/packetloss-release.tar.gz "$release" "$digest" --boot
+printf 'INSTANCE_ID=%s\nGAME_INSTANCE_ID=%s\nGAME_REGION=%s\nGAME_INSTANCE_RUN_ID=%s\n' "$instance_id" "$instance_id" '${region_key}' "$instance_run_id" >/run/packetloss-instance.env
+chmod 0644 /run/packetloss-instance.env

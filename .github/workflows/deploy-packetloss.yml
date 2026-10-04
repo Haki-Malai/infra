@@ -7,6 +7,10 @@ on:
         description: "GitHub deployment environment: dev or prod"
         required: true
         type: string
+      infra_ref:
+        description: "Full reviewed infra commit SHA, matching this reusable workflow's ref"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,11 +28,13 @@ jobs:
       BUILD_MODE: ${{ vars.BUILD_MODE }}
       VITE_GAME_ENV: ${{ vars.VITE_GAME_ENV }}
       VITE_API_URL: ${{ vars.VITE_API_URL }}
+      INFRA_REF: ${{ inputs.infra_ref }}
     steps:
       - name: Validate stage settings
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$INFRA_REF" =~ ^[0-9a-f]{40}$ ]]
           case "$STAGE:$GITHUB_REF:$BUILD_MODE" in
             dev:refs/heads/dev:development|prod:refs/heads/main:production) ;;
             *) echo "::error::Stage, branch, and build mode do not match."; exit 1 ;;
@@ -49,13 +55,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -70,11 +72,28 @@ jobs:
       - name: Package API Lambda
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check \
-            --requirement backend/requirements.txt --target backend-dist
-          cp -R backend/packetloss_api backend-dist/
+          pnpm run build:backend
           cd backend-dist
           zip -qr ../packetloss-api.zip .
+
+      - name: Checkout reviewed PACKETLOSS deployment tools
+        uses: actions/checkout@v4
+        with:
+          repository: Haki-Malai/infra
+          ref: ${{ inputs.infra_ref }}
+          path: packetloss-infra
+          persist-credentials: false
+
+      - name: Build Node deployment tools
+        working-directory: packetloss-infra/packetloss
+        run: npm ci && npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tooling-${{ inputs.stage }}-${{ github.sha }}
+          path: packetloss-infra/packetloss/dist/cloud.mjs
+          if-no-files-found: error
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         with:
@@ -105,7 +124,11 @@ jobs:
       S3_BUCKET: ${{ vars.S3_BUCKET }}
       CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
       LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+      GAME_CONTROL_LAMBDA_FUNCTION: ${{ vars.GAME_CONTROL_LAMBDA_FUNCTION }}
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Skip a superseded revision
         id: revision
         env:
@@ -140,6 +163,12 @@ jobs:
         with:
           name: api-${{ inputs.stage }}-${{ github.sha }}
 
+      - uses: actions/download-artifact@v4
+        if: steps.revision.outputs.current == 'true'
+        with:
+          name: tooling-${{ inputs.stage }}-${{ github.sha }}
+          path: tooling
+
       - name: Authenticate to the stage role
         if: steps.revision.outputs.current == 'true'
         uses: aws-actions/configure-aws-credentials@v4
@@ -153,11 +182,13 @@ jobs:
         run: |
           set -euo pipefail
           test -s packetloss-api.zip
-          aws lambda update-function-code \
-            --function-name "$LAMBDA_FUNCTION_NAME" \
-            --zip-file fileb://packetloss-api.zip \
-            --no-cli-pager >/dev/null
-          aws lambda wait function-updated-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+          node tooling/cloud.mjs lambda-deploy "$LAMBDA_FUNCTION_NAME" packetloss-api.zip account.handler
+
+      - name: Publish multiplayer control Lambda when provisioned
+        if: steps.revision.outputs.current == 'true' && env.GAME_CONTROL_LAMBDA_FUNCTION != ''
+        run: |
+          set -euo pipefail
+          node tooling/cloud.mjs lambda-deploy "$GAME_CONTROL_LAMBDA_FUNCTION" packetloss-api.zip multiplayer.handler
 
       - name: Upload assets, then publish the entry point
         if: steps.revision.outputs.current == 'true'
@@ -165,15 +196,4 @@ jobs:
           set -euo pipefail
           test -s dist/index.html
           # Keep earlier hashed bundles available to already-open browser sessions.
-          aws s3 sync dist/ "s3://$S3_BUCKET/" \
-            --exclude index.html --exclude deployment.json \
-            --cache-control 'public,max-age=300' --only-show-errors
-          aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
-            --content-type text/html --cache-control 'no-cache,no-store,must-revalidate' --only-show-errors
-          aws s3 cp dist/deployment.json "s3://$S3_BUCKET/deployment.json" \
-            --content-type application/json --cache-control 'no-cache,no-store,must-revalidate' --only-show-errors
-          invalidation_id="$(aws cloudfront create-invalidation \
-            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-            --paths '/*' --query 'Invalidation.Id' --output text)"
-          aws cloudfront wait invalidation-completed \
-            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --id "$invalidation_id"
+          node tooling/cloud.mjs site-publish "$S3_BUCKET" dist "$CLOUDFRONT_DISTRIBUTION_ID"

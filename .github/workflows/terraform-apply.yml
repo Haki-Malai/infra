@@ -28,17 +28,29 @@ jobs:
           terraform_version: 1.5.7
 
       - name: Init without backend
+        # Runtime bundles are local inputs to the PACKETLOSS archive resources.
         run: terraform init -backend=false -input=false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build PACKETLOSS infrastructure runtimes
+        working-directory: packetloss
+        run: npm ci && npm run build
 
       - name: Validate
         run: terraform validate
 
-  terraform-apply:
-    name: Terraform Plan and Apply
+  terraform-plan:
+    name: Terraform Plan
     needs: terraform-validate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      plan_sha256: ${{ steps.saved-plan.outputs.sha256 }}
+      plan_key: ${{ steps.saved-plan.outputs.key }}
+      planned_at: ${{ steps.saved-plan.outputs.planned_at }}
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -49,6 +61,10 @@ jobs:
       TF_VAR_budget_alert_email: ${{ secrets.BUDGET_ALERT_EMAIL }}
       TF_VAR_budget_scope: "account"
       TF_VAR_github_oidc_provider_arn: ${{ vars.AWS_GITHUB_OIDC_PROVIDER_ARN }}
+      TF_VAR_game_servers_enabled: ${{ vars.GAME_SERVERS_ENABLED || 'false' }}
+      TF_VAR_game_server_owner_subjects: ${{ secrets.GAME_SERVER_OWNER_SUBJECTS_JSON || '[]' }}
+      TF_VAR_game_server_certificate_email: ${{ secrets.GAME_SERVER_CERTIFICATE_EMAIL }}
+      TF_VAR_game_server_instance_type: ${{ vars.GAME_SERVER_INSTANCE_TYPE || 't4g.micro' }}
     steps:
       - name: Main branch guard
         run: |
@@ -75,6 +91,14 @@ jobs:
         working-directory: terraform
         run: terraform init -input=false
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build PACKETLOSS infrastructure runtimes
+        working-directory: packetloss
+        run: npm ci && npm run build
+
       - name: Validate
         working-directory: terraform
         run: terraform validate
@@ -83,6 +107,65 @@ jobs:
         working-directory: terraform
         run: terraform plan -input=false -lock-timeout=5m -out=tfplan
 
-      - name: Apply
+      - name: Save private plan for review
+        id: saved-plan
         working-directory: terraform
-        run: terraform apply -input=false -auto-approve tfplan
+        run: |
+          set -euo pipefail
+          plan_digest="$(sha256sum tfplan | cut -d ' ' -f 1)"
+          jq -n --arg commit "$GITHUB_SHA" --arg planSha256 "$plan_digest" \
+            '{commit:$commit,planSha256:$planSha256}' > plan-metadata.json
+          find .terraform -maxdepth 1 -type f -name '*.zip' -print | LC_ALL=C sort > plan-archives.txt
+          test -s plan-archives.txt
+          { printf 'tfplan\nplan-metadata.json\n'; cat plan-archives.txt; } > plan-bundle-files.txt
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf reviewed-plan.tar.gz -T plan-bundle-files.txt
+          key="production/plans/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}.tar.gz"
+          digest="$(sha256sum reviewed-plan.tar.gz | cut -d ' ' -f 1)"
+          aws s3 cp reviewed-plan.tar.gz "s3://hm-infra-tfstate-haki-malai-us-east-1/$key" --sse AES256 --only-show-errors
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "planned_at=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "Review the Terraform Plan output before approving Terraform Apply. Commit: $GITHUB_SHA. Plan bundle SHA256: $digest. Approval expires after 24 hours." >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-apply:
+    name: Terraform Apply reviewed plan
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      GITHUB_TOKEN: ${{ secrets.GH_TERRAFORM_TOKEN }}
+      TF_IN_AUTOMATION: "true"
+      PLAN_SHA256: ${{ needs.terraform-plan.outputs.plan_sha256 }}
+      PLAN_KEY: ${{ needs.terraform-plan.outputs.plan_key }}
+      PLANNED_AT: ${{ needs.terraform-plan.outputs.planned_at }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+      - name: Fetch the approved plan
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(( $(date +%s) - PLANNED_AT ))" -lt 86400
+          aws s3 cp "s3://hm-infra-tfstate-haki-malai-us-east-1/$PLAN_KEY" reviewed-plan.tar.gz --only-show-errors
+          printf '%s  reviewed-plan.tar.gz\n' "$PLAN_SHA256" | sha256sum -c -
+          terraform init -input=false -lockfile=readonly
+          tar -xzf reviewed-plan.tar.gz
+          test "$(jq -er '.commit' plan-metadata.json)" = "$GITHUB_SHA"
+          printf '%s  tfplan\n' "$(jq -er '.planSha256' plan-metadata.json)" | sha256sum -c -
+      - name: Apply the saved plan without replanning
+        working-directory: terraform
+        run: terraform apply -input=false -lock-timeout=5m tfplan
+      - name: Remove current private plan object
+        if: always()
+        run: aws s3 rm "s3://hm-infra-tfstate-haki-malai-us-east-1/$PLAN_KEY" --only-show-errors

@@ -1,0 +1,26 @@
+{
+  "name": "packetloss-infrastructure",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test ../tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudfront": "3.1146.0",
+    "@aws-sdk/client-cloudwatch-logs": "3.1146.0",
+    "@aws-sdk/client-dynamodb": "3.1146.0",
+    "@aws-sdk/client-ec2": "3.1146.0",
+    "@aws-sdk/client-lambda": "3.1146.0",
+    "@aws-sdk/client-route-53": "3.1146.0",
+    "@aws-sdk/client-s3": "3.1146.0",
+    "@aws-sdk/client-ssm": "3.1146.0",
+    "@aws-sdk/util-dynamodb": "3.996.9",
+    "acme-client": "5.4.0",
+    "mime-types": "2.1.35",
+    "tar": "7.5.11"
+  },
+  "devDependencies": { "esbuild": "0.25.12" }
+}

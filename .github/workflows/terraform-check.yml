@@ -7,6 +7,10 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-*.yml"
+      - ".github/workflows/deploy-*.yml"
+      - "scripts/**"
+      - "tests/**"
+      - "packetloss/**"
 
 permissions:
   contents: read
@@ -27,6 +31,14 @@ jobs:
         with:
           terraform_version: 1.5.7
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build PACKETLOSS infrastructure runtimes
+        working-directory: packetloss
+        run: npm ci && npm run build
+
       - name: Format
         run: terraform fmt -check -recursive
 
@@ -36,3 +48,8 @@ jobs:
       - name: Validate
         run: terraform validate
 
+      - name: Check operational scripts
+        working-directory: .
+        run: |
+          bash -n scripts/game-server terraform/modules/game-server/*.sh terraform/modules/game-server/*.sh.tftpl
+          npm --prefix packetloss test
